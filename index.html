@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<title>Private Repo Clipboard</title>
+<style>
+:root{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color-scheme:dark;--bg:#0a1020;--panel:#111a2d;--line:#2a3650;--text:#e9eef8;--muted:#a0aec5;--accent:#86a5ff;--ok:#76dfac;--err:#ff9292}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at top,#1b2b50,var(--bg) 58%);color:var(--text);min-height:100vh}main{max-width:1100px;margin:auto;padding:26px 16px 60px}.top{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:20px}h1{margin:0;font-size:clamp(1.6rem,4vw,2.25rem);letter-spacing:-.04em}.sub{color:var(--muted);margin:.4rem 0 0}.panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:17px;margin:14px 0;box-shadow:0 12px 32px #0002}.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.field{display:flex;flex-direction:column;gap:6px;min-width:0}label{font-size:.82rem;color:var(--muted)}input,textarea{font:inherit;color:var(--text);background:#0a1224;border:1px solid var(--line);border-radius:9px;padding:10px;width:100%;outline:none}input:focus,textarea:focus{border-color:var(--accent)}input[type=checkbox]{width:auto}.actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}button{font:inherit;background:#202d49;color:var(--text);border:1px solid #394969;border-radius:10px;padding:10px 13px;cursor:pointer}button.primary{background:var(--accent);color:#071127;border-color:var(--accent);font-weight:700}button:disabled{opacity:.5;cursor:not-allowed}button:hover{filter:brightness(1.1)}.small{font-size:.82rem;color:var(--muted);line-height:1.5}.warning{background:#f3bd4b12;border-left:3px solid #f3bd4b;border-radius:5px;padding:10px 12px;color:#f5dca4;font-size:.9rem;line-height:1.5}.editorhead{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px}.editorhead h2{margin:0;font-size:1.05rem}.editor{min-height:52vh;resize:vertical;line-height:1.55;font: .92rem ui-monospace,SFMono-Regular,Consolas,monospace;tab-size:4}.status{font-size:.88rem;color:var(--muted);min-height:1.4em}.status.ok{color:var(--ok)}.status.err{color:var(--err)}.pill{border:1px solid var(--line);border-radius:99px;padding:4px 9px;color:var(--muted);font-size:.78rem}.mutedline{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:10px}@media(max-width:760px){.grid{grid-template-columns:1fr 1fr}.editor{min-height:48vh}}@media(max-width:460px){.grid{grid-template-columns:1fr}.panel{padding:13px}}
+</style>
+</head>
+<body><main>
+<header class="top"><div><h1>Private Repo Clipboard <span class="pill">authenticated</span></h1><p class="sub">Your text, in a private repository. Share links require repository access.</p></div><div class="actions"><button id="newBtn" class="primary">＋ New clip</button><button id="shareBtn">Copy share link</button></div></header>
+<section class="panel">
+<div class="grid">
+<div class="field"><label for="owner">GitHub owner</label><input id="owner" placeholder="your-username" autocomplete="off"></div>
+<div class="field"><label for="repo">Private data repository</label><input id="repo" placeholder="private-clipboard" autocomplete="off"></div>
+<div class="field"><label for="branch">Branch</label><input id="branch" value="main" autocomplete="off"></div>
+<div class="field"><label for="token">Fine-grained token</label><input id="token" type="password" autocomplete="off" placeholder="Paste token for this session"></div>
+</div>
+<div class="actions" style="margin-top:12px"><button id="connectBtn">Authenticate & load link</button><button id="clearTokenBtn">Clear token</button><span id="connection" class="status" role="status"></span></div>
+<p class="small">Use a fine-grained token limited to this private repository with <b>Contents: Read and write</b>. The token is held in memory only and is not saved to localStorage, cookies, or the URL. Clear it when finished.</p>
+<div class="warning"><b>Security reality:</b> this is a static website, so the token exists in your browser while you use it and can be inspected by scripts running in the same page. Use this only on a trusted device. For stronger security or multi-user access, put a backend between the page and GitHub rather than embedding credentials in a static app.</div>
+</section>
+<section class="panel">
+<div class="editorhead"><div><h2 id="clipTitle">Untitled clip</h2><div id="meta" class="small">New clip · not saved</div></div><div class="actions"><button id="copyBtn">Copy text</button><button id="downloadBtn">Download .txt</button><button id="saveBtn" class="primary">Save now</button></div></div>
+<textarea id="content" class="editor" spellcheck="false" placeholder="Paste code, logs, diagnostics, or any text here…"></textarea>
+<div class="mutedline"><span id="status" class="status">Authenticate to load or save clips.</span><span id="size" class="small">0 characters · 0 B</span></div>
+</section>
+<section class="panel">
+<div class="field"><label for="title">Local title (not stored in GitHub)</label><input id="title" maxlength="120" placeholder="e.g. Ethernet debug logs"></div>
+<div class="actions" style="margin-top:12px"><label style="display:flex;align-items:center;gap:8px"><input id="autosave" type="checkbox" checked> Autosave 1.5 seconds after typing pauses</label></div>
+<p class="small">Each clip is a file at <code>clips/&lt;id&gt;.txt</code>. Share links contain only a random clip ID, not the text or token. Anyone opening a link must authenticate with a token that has access to this private repository.</p>
+</section>
+<footer class="small">Plain UTF-8 text · no external libraries · GitHub API rate limits and repository limits apply.</footer>
+</main>
+<script>
+(() => {
+"use strict";
+const MAX_BYTES = 5 * 1024 * 1024; // conservative default, 5 MiB per clip
+const $ = id => document.getElementById(id);
+let token = "", clipId = "", savedText = null, saveTimer = null, saving = false, queued = false, loading = false;
+const encoder = new TextEncoder();
+const byteLength = s => encoder.encode(s).length;
+const human = n => n < 1024 ? `${n} B` : n < 1048576 ? `${(n/1024).toFixed(1)} KiB` : `${(n/1048576).toFixed(2)} MiB`;
+const setStatus = (s, kind="") => { $("status").textContent=s; $("status").className="status "+kind; };
+const setConnection = (s, kind="") => { $("connection").textContent=s; $("connection").className="status "+kind; };
+const config = () => ({owner:$("owner").value.trim(), repo:$("repo").value.trim(), branch:$("branch").value.trim() || "main"});
+const validConfig = c => /^[A-Za-z0-9-]+$/.test(c.owner) && /^[A-Za-z0-9_.-]+$/.test(c.repo) && !!c.branch;
+const pathFor = id => `clips/${id}.txt`;
+const apiUrl = (c,p) => `https://api.github.com/repos/${encodeURIComponent(c.owner)}/${encodeURIComponent(c.repo)}/contents/${p.split("/").map(encodeURIComponent).join("/")}`;
+const headers = (accept="application/vnd.github+json") => ({Authorization:`Bearer ${token}`,Accept:accept,"X-GitHub-Api-Version":"2022-11-28"});
+async function checked(res) {
+  if (res.ok) return res;
+  let msg=`GitHub API error ${res.status}`;
+  try { const j=await res.json(); if(j.message) msg+=`: ${j.message}`; } catch {}
+  if(res.status===401||res.status===403) msg+=" — check token expiry, repository access, permissions, and rate limits.";
+  if(res.status===404) msg+=" — check repository, branch, clip ID, and token access (GitHub may hide private resources as 404).";
+  if(res.status===409) msg+=" — update conflict; retry Save now.";
+  throw new Error(msg);
+}
+function randomId(){const a=new Uint8Array(12);crypto.getRandomValues(a);return [...a].map(v=>v.toString(16).padStart(2,"0")).join("");}
+function toBase64(s){const b=encoder.encode(s);let bin="";for(let i=0;i<b.length;i+=32768)bin+=String.fromCharCode(...b.subarray(i,i+32768));return btoa(bin);}
+function fromBase64(s){const bin=atob(s.replace(/\s/g,""));const b=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)b[i]=bin.charCodeAt(i);return new TextDecoder().decode(b);}
+function updateView(){ $("clipTitle").textContent=$("title").value.trim()||(clipId?`Clip ${clipId.slice(0,8)}`:"Untitled clip"); $("meta").textContent=clipId?`ID: ${clipId} · ${savedText===null?"not saved":"loaded/saved"}`:"New clip · not saved"; }
+function updateSize(){const n=byteLength($("content").value);$("size").textContent=`${$("content").value.length.toLocaleString()} characters · ${human(n)}`;if(n>MAX_BYTES)setStatus(`Over the ${human(MAX_BYTES)} per-clip safety limit.`,"err");}
+async function authenticate() {
+  const c=config(); if(!validConfig(c)) throw new Error("Enter a valid owner, repository, and branch.");
+  if(!token) throw new Error("Paste your fine-grained token first.");
+  const res=await fetch(`https://api.github.com/repos/${encodeURIComponent(c.owner)}/${encodeURIComponent(c.repo)}`,{headers:headers()});
+  await checked(res); const data=await res.json();
+  if(!data.private) throw new Error("This repository is not private. Create or select a private data repository.");
+  setConnection(`Authenticated · private repository · ${data.full_name}`,"ok");
+}
+async function getMetadata(c,path){const r=await fetch(apiUrl(c,path),{headers:headers()});if(r.status===404)return null;await checked(r);return await r.json();}
+async function loadClip(id) {
+  if(!/^[a-f0-9]{24}$/.test(id)) throw new Error("Invalid clip ID in URL.");
+  const c=config(); if(!validConfig(c)) throw new Error("Enter owner, private repository, and branch.");
+  if(!token) throw new Error("Paste a token with access to this private repository.");
+  loading=true;setStatus("Loading private clip…");
+  try {
+    // Raw media type supports private files >1 MiB; this app's default limit is 5 MiB.
+    const r=await fetch(apiUrl(c,pathFor(id)),{headers:headers("application/vnd.github.raw+json"),cache:"no-store"});
+    await checked(r); const text=await r.text();
+    if(byteLength(text)>MAX_BYTES)throw new Error(`Clip exceeds this app's ${human(MAX_BYTES)} safety limit.`);
+    clipId=id;savedText=text;$("content").value=text;updateView();updateSize();setStatus("Private clip loaded. Changes are not saved until autosave/manual save runs.","ok");
+  } finally {loading=false;}
+}
+async function saveClip(){
+  if(saving){queued=true;return;}
+  const c=config();if(!validConfig(c)){setStatus("Enter a valid owner, repository, and branch.","err");return;}
+  if(!token){setStatus("Authenticate with a token before saving.","err");return;}
+  const text=$("content").value,n=byteLength(text);if(n>MAX_BYTES){setStatus(`Text is too large. Limit: ${human(MAX_BYTES)}.`,"err");return;}
+  if(clipId&&savedText===text){setStatus("No changes to save.","ok");return;}
+  saving=true;queued=false;if(!clipId)clipId=randomId();setStatus("Saving private clip to GitHub…");
+  try{
+    const path=pathFor(clipId),meta=await getMetadata(c,path);
+    const body={message:`${meta?"Update":"Add"} private clipboard clip ${clipId}`,content:toBase64(text),branch:c.branch};
+    if(meta?.sha)body.sha=meta.sha;
+    const r=await fetch(apiUrl(c,path),{method:"PUT",headers:{...headers(),"Content-Type":"application/json"},body:JSON.stringify(body)});
+    await checked(r);await r.json();savedText=text;history.replaceState(null,"",`${location.pathname}?id=${clipId}`);updateView();setStatus(`Saved privately · ${human(n)} · Git commit created`,"ok");
+  }catch(e){setStatus(e.message||"Save failed.","err");}
+  finally{saving=false;if(queued){queued=false;saveClip();}}
+}
+function changed(){updateSize();updateView();if(loading)return;setStatus("Unsaved changes.");clearTimeout(saveTimer);if($("autosave").checked)saveTimer=setTimeout(()=>token?saveClip():setStatus("Changes are unsaved. Authenticate, then click Save now."),1500);}
+function newClip(){clearTimeout(saveTimer);clipId="";savedText=null;$("content").value="";$("title").value="";history.replaceState(null,"",location.pathname);updateView();updateSize();setStatus("New clip. Authenticate and save to create it.");}
+async function copyText(){try{await navigator.clipboard.writeText($("content").value);setStatus("Copied text to clipboard.","ok");}catch{$("content").focus();$("content").select();setStatus("Text selected; use your device's Copy command.","err");}}
+function downloadText(){const blob=new Blob([$("content").value],{type:"text/plain;charset=utf-8"});const u=URL.createObjectURL(blob),a=document.createElement("a");a.href=u;a.download=`${clipId||"clipboard"}.txt`;document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(u);}
+async function shareLink(){if(!clipId||savedText===null||savedText!==$("content").value){setStatus("Save the clip first, then copy its share link.","err");return;}const u=new URL(location.href);u.search=`?id=${clipId}`;try{await navigator.clipboard.writeText(u.href);setStatus("Share link copied. The recipient still needs repository access and their own token.","ok");}catch{prompt("Copy this private share link:",u.href);}}
+$("token").addEventListener("input",e=>token=e.target.value.trim());
+$("connectBtn").addEventListener("click",async()=>{try{await authenticate();const id=new URLSearchParams(location.search).get("id");if(id)await loadClip(id);else setStatus("Authenticated. Paste or type text to save.","ok");}catch(e){setConnection(e.message,"err");}});
+$("clearTokenBtn").addEventListener("click",()=>{token="";$("token").value="";setConnection("Token cleared from page memory.");setStatus("Token cleared. Authenticate again to load or save.");});
+$("saveBtn").addEventListener("click",saveClip);$("newBtn").addEventListener("click",newClip);$("shareBtn").addEventListener("click",shareLink);$("copyBtn").addEventListener("click",copyText);$("downloadBtn").addEventListener("click",downloadText);
+$("content").addEventListener("input",changed);$("title").addEventListener("input",updateView);$("content").addEventListener("keydown",e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="s"){e.preventDefault();saveClip();}});
+updateView();updateSize();
+if(new URLSearchParams(location.search).get("id"))setStatus("Share link detected. Enter repository details and a token with access, then click Authenticate & load link.");
+})();
+</script></body></html>
